@@ -1,0 +1,11 @@
+all 'public/app', 'public/styles', 'server'
+
+task 'server', 'server.js', 'lib', ->
+    exec 'node server'
+
+target 'public/app', 'app', ->
+    cd 'app'
+    exec 'browserify index.js -o ../public/app/dist.js'
+
+target 'public/styles', 'styles', ->
+    exec 'stylus styles -o public/styles'

@@ -1,0 +1,25 @@
+{
+  "name": "website",
+  "version": "0.0.0",
+  "description": "New website template",
+  "main": "app.js",
+  "scripts": {
+    "start": "DEBUG=* node app",
+    "test": "fox"
+  },
+  "dependencies": {
+    "passport": "*",
+    "fox": "*",
+    "express": "3.x",
+    "debug": "~0.7.2",
+    "stylus": "~0.32.1",
+    "engine.io": "~0.5.0",
+    "engine.io-client": "~0.5.0"
+  },
+  "repository": {
+    "url": "git@github.com:azer/new-website.git",
+    "type": "git"
+  },
+  "author": "azer",
+  "license": "BSD"
+}
