@@ -1,8 +1,12 @@
-var eio = require('engine.io-client');
+var io = require("./io");
 
-var socket = new eio();
+io.sub('new user', function(user){
+  console.log('# new user', user);
+});
 
-socket.onopen = function(){
-  socket.onmessage = function(data){};
-  socket.onclose = function(){};
-};
+io.sub('login', function(user){
+  console.log('# login', user);
+});
+
+io.pub('new user', { name: 'azer', passwd: 123 });
+io.pub('login', { name: 'azer login', passwd: 123 });

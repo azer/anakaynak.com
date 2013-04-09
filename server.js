@@ -1,24 +1,22 @@
-var debug   = require('debug')('server:'),
-    express = require("express"),
-    app     = express(app),
-    server  = require('http').createServer(app),
-    io      = require('engine.io').attach(server),
-    port    = process.env.port || 3000;
+var debug  = require('./lib/debug')('main'),
+    app    = require('./lib/app'),
+    people = require('./lib/people'),
+    port   = process.env.port || 3000;
 
-app.use(express.logger('dev'));
-app.use(express.bodyParser());
+/*socket(function(conn){
+  var i = 0;
 
-app.use('/static', express.static(__dirname + '/public'));
-
-app.get('/', function(req, res){
-  res.sendfile('templates/index.html');
-});
-
-io.on('connection', function(socket){
-  socket.on('message', function(v){
-    socket.send('pong');
+  conn.sub(function(msg){
+    console.log('<-', msg);
+    conn.pub('pong');
   });
-});
 
-server.listen(port);
+  conn.close(function(){
+    console.log('close');
+  });
+
+});*/
+
+app.server.listen(port);
+
 debug('Listening port on %s', port);

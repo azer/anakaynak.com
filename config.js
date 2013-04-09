@@ -1,0 +1,1 @@
+exports.mongo = 'localhost/cats';

@@ -1,18 +1,255 @@
 ;(function(e,t,n){function i(n,s){if(!t[n]){if(!e[n]){var o=typeof require=="function"&&require;if(!s&&o)return o(n,!0);if(r)return r(n,!0);throw new Error("Cannot find module '"+n+"'")}var u=t[n]={exports:{}};e[n][0](function(t){var r=e[n][1][t];return i(r?r:t)},u,u.exports)}return t[n].exports}var r=typeof require=="function"&&require;for(var s=0;s<n.length;s++)i(n[s]);return i})({1:[function(require,module,exports){
-var eio = require('engine.io-client');
+var io = require("./io");
 
-var socket = new eio();
+io.sub('new user', function(user){
+  console.log('# new user', user);
+});
 
-socket.onopen = function(){
-  socket.onmessage = function(data){};
-  socket.onclose = function(){};
+io.sub('login', function(user){
+  console.log('# login', user);
+});
+
+io.pub('new user', { name: 'azer', passwd: 123 });
+io.pub('login', { name: 'azer login', passwd: 123 });
+
+},{"./io":2}],2:[function(require,module,exports){
+var socket   = require('./socket'),
+    pubsub   = require('new-pubsub'),
+    channels = {};
+
+module.exports = {
+  sub : sub,
+  pub : pub
 };
 
-},{"engine.io-client":2}],2:[function(require,module,exports){
+socket.sub(function(rawMsg){
+
+  var msg = parseRawMsg(rawMsg);
+  if( ! msg || ! msg.channel || ! channels[msg.channel] ) return;
+  channels[msg.channel].publish(msg.content, pub);
+
+});
+
+function parseRawMsg(msg){
+  try {
+    return JSON.parse(msg);
+  } catch (err) {}
+}
+
+function sub(channel, callback){
+  channels[ channel ] || ( channels[ channel ] = pubsub() );
+  channels[ channel ] (callback);
+}
+
+function pub(channel, content){
+  socket.pub(JSON.stringify({ channel: channel, content: content }));
+}
+
+},{"./socket":3,"new-pubsub":4}],4:[function(require,module,exports){
+module.exports = fog;
+
+function fog(customProxy){
+  var proxy = customProxy || function pubsubProxy(){
+    arguments.length && sub.apply(undefined, arguments);
+  };
+
+  function sub(callback){
+    subscribe(proxy, callback);
+  }
+
+  function subOnce(callback){
+    once(proxy, callback);
+  }
+
+  function unsubOnce(callback){
+    unsubscribeOnce(proxy, callback);
+  }
+
+  function unsub(callback){
+    unsubscribe(proxy, callback);
+  }
+
+  function pub(){
+    var args = [proxy];
+    Array.prototype.push.apply(args, arguments);
+    publish.apply(undefined, args);
+  }
+
+  proxy.subscribers        = [];
+  proxy.subscribersForOnce = [];
+
+  proxy.subscribe          = sub;
+  proxy.subscribe.once     = subOnce;
+  proxy.unsubscribe        = unsub;
+  proxy.unsubscribe.once   = unsubOnce;
+  proxy.publish            = pub;
+  proxy.extendsAdaPubsub   = true;
+  proxy.hasCustomProxy     = !!customProxy;
+
+  return proxy;
+}
+
+/**
+ * Publish "from" by applying given args
+ *
+ * @param {Function} from
+ * @param {...Any} args
+ */
+function publish(from){
+
+  var args = Array.prototype.slice.call(arguments, 1);
+
+  if (from && from.subscribers && from.subscribers.length > 0) {
+    from.subscribers.forEach(function(cb, i){
+      if(!cb) return;
+
+      try {
+        cb.apply(undefined, args);
+      } catch(exc) {
+        setTimeout(function(){ throw exc; }, 0);
+      }
+    });
+  }
+
+  if (from && from.subscribersForOnce && from.subscribersForOnce.length > 0) {
+    from.subscribersForOnce.forEach(function(cb, i){
+      if(!cb) return;
+
+      try {
+        cb.apply(undefined, args);
+      } catch(exc) {
+        setTimeout(function(){ throw exc; }, 0);
+      }
+    });
+
+    from.subscribersForOnce = [];
+
+  }
+
+}
+
+/**
+ * Subscribe callback to given pubsub object.
+ *
+ * @param {Pubsub} to
+ * @param {Function} callback
+ */
+function subscribe(to, callback){
+  if(!callback) return false;
+  return to.subscribers.push(callback);
+}
+
+
+/**
+ * Subscribe callback to given pubsub object for only one publish.
+ *
+ * @param {Pubsub} to
+ * @param {Function} callback
+ */
+function once(to, callback){
+  if(!callback) return false;
+
+  return to.subscribersForOnce.push(callback);
+}
+
+/**
+ * Unsubscribe callback to given pubsub object.
+ *
+ * @param {Pubsub} to
+ * @param {Function} callback
+ */
+function unsubscribe(to, callback){
+  var i = to.subscribers.length;
+
+  while(i--){
+    if(to.subscribers[i] && to.subscribers[i] == callback){
+      to.subscribers[i] = undefined;
+
+      return i;
+    }
+  }
+
+  return false;
+}
+
+
+/**
+ * Unsubscribe callback subscribed for once to specified pubsub.
+ *
+ * @param {Pubsub} to
+ * @param {Function} callback
+ * @return {Boolean or Number}
+ */
+function unsubscribeOnce(to, callback){
+  var i = to.subscribersForOnce.length;
+
+  while(i--){
+    if(to.subscribersForOnce[i] && to.subscribersForOnce[i] == callback){
+      to.subscribersForOnce[i] = undefined;
+
+      return i;
+    }
+  }
+
+  return false;
+}
+
+},{}],3:[function(require,module,exports){
+var eio      = require('engine.io-client'),
+    socket   = new eio,
+    deferred = { callbacks: [], onClose: [], messages: [] },
+    isOpen;
+
+socket.onopen = onOpen;
+
+module.exports = {
+  close : close,
+  pub   : pub,
+  sub   : sub
+};
+
+function close(cb){
+  if(!isOpen) return deferred.onClose.push(cb);
+
+  socket.on('close', cb);
+}
+
+
+function onOpen(){
+  isOpen = true;
+
+  deferred.callbacks.forEach(function(cb){
+    socket.on('message', cb);
+  });
+
+  deferred.messages.forEach(function(msg){
+    socket.send(msg);
+  });
+
+  deferred.onClose.forEach(function(cb){
+    socket.on('close', cb);
+  });
+
+  delete deferred;
+}
+
+function pub(msg){
+  if(!isOpen) return deferred.messages.push(msg);
+
+  socket.send(msg);
+}
+
+function sub(cb){
+  if(!isOpen) return deferred.callbacks.push(cb);
+
+  socket.on('message', cb);
+}
+
+},{"engine.io-client":5}],5:[function(require,module,exports){
 
 module.exports =  require('./lib/');
 
-},{"./lib/":3}],3:[function(require,module,exports){
+},{"./lib/":6}],6:[function(require,module,exports){
 
 module.exports = require('./socket');
 
@@ -24,11 +261,11 @@ module.exports = require('./socket');
  */
 module.exports.parser = require('engine.io-parser');
 
-},{"./socket":4,"engine.io-parser":5}],5:[function(require,module,exports){
+},{"./socket":7,"engine.io-parser":8}],8:[function(require,module,exports){
 
 module.exports = require('./lib/');
 
-},{"./lib/":6}],7:[function(require,module,exports){
+},{"./lib/":9}],10:[function(require,module,exports){
 (function(){
 /**
  * Module dependencies
@@ -93,7 +330,7 @@ function polling (opts) {
 };
 
 })()
-},{"./polling-xhr":8,"./websocket":9,"./polling-jsonp":10,"../util":11,"./flashsocket":12}],4:[function(require,module,exports){
+},{"./polling-xhr":11,"./polling-jsonp":12,"./websocket":13,"./flashsocket":14,"../util":15}],7:[function(require,module,exports){
 (function(){/**
  * Module dependencies.
  */
@@ -617,7 +854,7 @@ Socket.prototype.filterUpgrades = function (upgrades) {
 };
 
 })()
-},{"./util":11,"./emitter":13,"./transport":14,"./transports":7,"engine.io-parser":5,"debug":15}],15:[function(require,module,exports){
+},{"./util":15,"./emitter":16,"./transport":17,"./transports":10,"engine.io-parser":8,"debug":18}],18:[function(require,module,exports){
 
 /**
  * Expose `debug()` as the module.
@@ -743,7 +980,7 @@ debug.enabled = function(name) {
 
 if (window.localStorage) debug.enable(localStorage.debug);
 
-},{}],11:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 (function(){/**
  * Status of page load.
  */
@@ -1035,7 +1272,7 @@ exports.qsParse = function(qs){
 };
 
 })()
-},{"xmlhttprequest":16}],13:[function(require,module,exports){
+},{"xmlhttprequest":19}],16:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -1073,7 +1310,7 @@ Emitter.prototype.removeEventListener = Emitter.prototype.off;
 
 Emitter.prototype.removeListener = Emitter.prototype.off;
 
-},{"emitter":17}],14:[function(require,module,exports){
+},{"emitter":20}],17:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -1216,7 +1453,7 @@ Transport.prototype.onClose = function () {
   this.emit('close');
 };
 
-},{"./util":11,"./emitter":13,"engine.io-parser":5}],6:[function(require,module,exports){
+},{"./util":15,"./emitter":16,"engine.io-parser":8}],9:[function(require,module,exports){
 /**
  * Module dependencies.
  */
@@ -1385,7 +1622,7 @@ exports.decodePayload = function (data, callback) {
 
 };
 
-},{"./keys":18}],19:[function(require,module,exports){
+},{"./keys":21}],22:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -1439,7 +1676,7 @@ process.chdir = function (dir) {
     throw new Error('process.chdir is not supported');
 };
 
-},{}],20:[function(require,module,exports){
+},{}],23:[function(require,module,exports){
 require=(function(e,t,n,r){function i(r){if(!n[r]){if(!t[r]){if(e)return e(r);throw new Error("Cannot find module '"+r+"'")}var s=n[r]={exports:{}};t[r][0](function(e){var n=t[r][1][e];return i(n?n:e)},s,s.exports)}return n[r].exports}for(var s=0;s<r.length;s++)i(r[s]);return i})(typeof require!=="undefined"&&require,{1:[function(require,module,exports){
 exports.readIEEE754 = function(buffer, offset, isBE, mLen, nBytes) {
   var e, m,
@@ -5304,7 +5541,7 @@ SlowBuffer.prototype.writeDoubleBE = Buffer.prototype.writeDoubleBE;
 },{}]},{},[])
 ;;module.exports=require("buffer-browserify")
 
-},{}],16:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 (function(process,Buffer){/**
  * Wrapper for built-in http.js to emulate the browser XMLHttpRequest object.
  *
@@ -5870,7 +6107,7 @@ exports.XMLHttpRequest = function() {
 };
 
 })(require("__browserify_process"),require("__browserify_buffer").Buffer)
-},{"url":21,"child_process":22,"fs":23,"http":24,"https":25,"__browserify_process":19,"__browserify_buffer":20}],10:[function(require,module,exports){
+},{"url":24,"child_process":25,"fs":26,"http":27,"https":28,"__browserify_process":22,"__browserify_buffer":23}],12:[function(require,module,exports){
 (function(){
 /**
  * Module requirements.
@@ -6105,7 +6342,7 @@ JSONPPolling.prototype.doWrite = function (data, fn) {
 };
 
 })()
-},{"./polling":26,"../util":11}],17:[function(require,module,exports){
+},{"./polling":29,"../util":15}],20:[function(require,module,exports){
 
 /**
  * Expose `Emitter`.
@@ -6263,7 +6500,7 @@ Emitter.prototype.hasListeners = function(event){
   return !! this.listeners(event).length;
 };
 
-},{}],18:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 
 /**
  * Gets the keys for an object.
@@ -6284,7 +6521,7 @@ module.exports = Object.keys || function keys (obj){
   return arr;
 };
 
-},{}],21:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 var punycode = { encode : function (s) { return s } };
 
 exports.parse = urlParse;
@@ -6890,14 +7127,14 @@ function parseHost(host) {
   return out;
 }
 
-},{"querystring":27}],22:[function(require,module,exports){
+},{"querystring":30}],25:[function(require,module,exports){
 exports.spawn = function () {};
 exports.exec = function () {};
 
-},{}],23:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 // nothing to see here... no file methods for the browser
 
-},{}],25:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 var http = require('http');
 
 var https = module.exports;
@@ -6911,7 +7148,7 @@ https.request = function (params, cb) {
     params.scheme = 'https';
     return http.request.call(this, params, cb);
 }
-},{"http":24}],27:[function(require,module,exports){
+},{"http":27}],30:[function(require,module,exports){
 var isArray = typeof Array.isArray === 'function'
     ? Array.isArray
     : function (xs) {
@@ -7163,7 +7400,7 @@ function lastBraceInKey(str) {
   }
 }
 
-},{}],28:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 (function(process){if (!process.EventEmitter) process.EventEmitter = function () {};
 
 var EventEmitter = exports.EventEmitter = process.EventEmitter;
@@ -7349,7 +7586,7 @@ EventEmitter.prototype.listeners = function(type) {
 };
 
 })(require("__browserify_process"))
-},{"__browserify_process":19}],24:[function(require,module,exports){
+},{"__browserify_process":22}],27:[function(require,module,exports){
 var http = module.exports;
 var EventEmitter = require('events').EventEmitter;
 var Request = require('./lib/request');
@@ -7411,7 +7648,7 @@ var xhrHttp = (function () {
     }
 })();
 
-},{"events":28,"./lib/request":29}],30:[function(require,module,exports){
+},{"events":31,"./lib/request":32}],33:[function(require,module,exports){
 var events = require('events');
 var util = require('util');
 
@@ -7532,7 +7769,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":28,"util":31}],32:[function(require,module,exports){
+},{"events":31,"util":34}],35:[function(require,module,exports){
 (function(global){/// shim for browser packaging
 
 module.exports = function() {
@@ -7540,7 +7777,7 @@ module.exports = function() {
 }
 
 })(window)
-},{}],31:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 var events = require('events');
 
 exports.isArray = isArray;
@@ -7893,7 +8130,7 @@ exports.format = function(f) {
   return str;
 };
 
-},{"events":28}],33:[function(require,module,exports){
+},{"events":31}],36:[function(require,module,exports){
 (function(){// UTILITY
 var util = require('util');
 var Buffer = require("buffer").Buffer;
@@ -8210,7 +8447,7 @@ assert.doesNotThrow = function(block, /*optional*/error, /*optional*/message) {
 assert.ifError = function(err) { if (err) {throw err;}};
 
 })()
-},{"util":31,"buffer":34}],8:[function(require,module,exports){
+},{"util":34,"buffer":37}],11:[function(require,module,exports){
 (function(){/**
  * Module requirements.
  */
@@ -8505,7 +8742,7 @@ if (xobject) {
 }
 
 })()
-},{"./polling":26,"../util":11,"../emitter":13,"debug":15}],9:[function(require,module,exports){
+},{"./polling":29,"../util":15,"../emitter":16,"debug":18}],13:[function(require,module,exports){
 (function(){
 /**
  * Module dependencies.
@@ -8666,7 +8903,7 @@ function ws(){
 }
 
 })()
-},{"../transport":14,"../util":11,"ws":32,"engine.io-parser":5,"debug":15}],12:[function(require,module,exports){
+},{"../transport":17,"../util":15,"ws":35,"engine.io-parser":8,"debug":18}],14:[function(require,module,exports){
 (function(){/**
  * Module dependencies.
  */
@@ -8928,7 +9165,7 @@ function load (arr, fn) {
 };
 
 })()
-},{"./websocket":9,"../util":11,"debug":15}],35:[function(require,module,exports){
+},{"./websocket":13,"../util":15,"debug":18}],38:[function(require,module,exports){
 var Stream = require('stream');
 
 var Response = module.exports = function (res) {
@@ -9049,7 +9286,7 @@ var isArray = Array.isArray || function (xs) {
     return Object.prototype.toString.call(xs) === '[object Array]';
 };
 
-},{"stream":30}],36:[function(require,module,exports){
+},{"stream":33}],39:[function(require,module,exports){
 exports.readIEEE754 = function(buffer, offset, isBE, mLen, nBytes) {
   var e, m,
       eLen = nBytes * 8 - mLen - 1,
@@ -9135,7 +9372,7 @@ exports.writeIEEE754 = function(buffer, value, offset, isBE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128;
 };
 
-},{}],34:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 (function(){function SlowBuffer (size) {
     this.length = size;
 };
@@ -10455,7 +10692,7 @@ SlowBuffer.prototype.writeDoubleLE = Buffer.prototype.writeDoubleLE;
 SlowBuffer.prototype.writeDoubleBE = Buffer.prototype.writeDoubleBE;
 
 })()
-},{"assert":33,"./buffer_ieee754":36,"base64-js":37}],29:[function(require,module,exports){
+},{"assert":36,"./buffer_ieee754":39,"base64-js":40}],32:[function(require,module,exports){
 (function(){var Stream = require('stream');
 var Response = require('./response');
 var concatStream = require('concat-stream')
@@ -10589,7 +10826,93 @@ var indexOf = function (xs, x) {
 };
 
 })()
-},{"stream":30,"buffer":34,"./response":35,"concat-stream":38}],26:[function(require,module,exports){
+},{"stream":33,"buffer":37,"./response":38,"concat-stream":41}],40:[function(require,module,exports){
+(function (exports) {
+	'use strict';
+
+	var lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+	function b64ToByteArray(b64) {
+		var i, j, l, tmp, placeHolders, arr;
+	
+		if (b64.length % 4 > 0) {
+			throw 'Invalid string. Length must be a multiple of 4';
+		}
+
+		// the number of equal signs (place holders)
+		// if there are two placeholders, than the two characters before it
+		// represent one byte
+		// if there is only one, then the three characters before it represent 2 bytes
+		// this is just a cheap hack to not do indexOf twice
+		placeHolders = b64.indexOf('=');
+		placeHolders = placeHolders > 0 ? b64.length - placeHolders : 0;
+
+		// base64 is 4/3 + up to two characters of the original data
+		arr = [];//new Uint8Array(b64.length * 3 / 4 - placeHolders);
+
+		// if there are placeholders, only get up to the last complete 4 chars
+		l = placeHolders > 0 ? b64.length - 4 : b64.length;
+
+		for (i = 0, j = 0; i < l; i += 4, j += 3) {
+			tmp = (lookup.indexOf(b64[i]) << 18) | (lookup.indexOf(b64[i + 1]) << 12) | (lookup.indexOf(b64[i + 2]) << 6) | lookup.indexOf(b64[i + 3]);
+			arr.push((tmp & 0xFF0000) >> 16);
+			arr.push((tmp & 0xFF00) >> 8);
+			arr.push(tmp & 0xFF);
+		}
+
+		if (placeHolders === 2) {
+			tmp = (lookup.indexOf(b64[i]) << 2) | (lookup.indexOf(b64[i + 1]) >> 4);
+			arr.push(tmp & 0xFF);
+		} else if (placeHolders === 1) {
+			tmp = (lookup.indexOf(b64[i]) << 10) | (lookup.indexOf(b64[i + 1]) << 4) | (lookup.indexOf(b64[i + 2]) >> 2);
+			arr.push((tmp >> 8) & 0xFF);
+			arr.push(tmp & 0xFF);
+		}
+
+		return arr;
+	}
+
+	function uint8ToBase64(uint8) {
+		var i,
+			extraBytes = uint8.length % 3, // if we have 1 byte left, pad 2 bytes
+			output = "",
+			temp, length;
+
+		function tripletToBase64 (num) {
+			return lookup[num >> 18 & 0x3F] + lookup[num >> 12 & 0x3F] + lookup[num >> 6 & 0x3F] + lookup[num & 0x3F];
+		};
+
+		// go through the array every three bytes, we'll deal with trailing stuff later
+		for (i = 0, length = uint8.length - extraBytes; i < length; i += 3) {
+			temp = (uint8[i] << 16) + (uint8[i + 1] << 8) + (uint8[i + 2]);
+			output += tripletToBase64(temp);
+		}
+
+		// pad the end with zeros, but make sure to not forget the extra bytes
+		switch (extraBytes) {
+			case 1:
+				temp = uint8[uint8.length - 1];
+				output += lookup[temp >> 2];
+				output += lookup[(temp << 4) & 0x3F];
+				output += '==';
+				break;
+			case 2:
+				temp = (uint8[uint8.length - 2] << 8) + (uint8[uint8.length - 1]);
+				output += lookup[temp >> 10];
+				output += lookup[(temp >> 4) & 0x3F];
+				output += lookup[(temp << 2) & 0x3F];
+				output += '=';
+				break;
+		}
+
+		return output;
+	}
+
+	module.exports.toByteArray = b64ToByteArray;
+	module.exports.fromByteArray = uint8ToBase64;
+}());
+
+},{}],29:[function(require,module,exports){
 (function(){/**
  * Module dependencies.
  */
@@ -10805,93 +11128,7 @@ Polling.prototype.uri = function(){
 };
 
 })()
-},{"../transport":14,"../util":11,"engine.io-parser":5,"debug":15}],37:[function(require,module,exports){
-(function (exports) {
-	'use strict';
-
-	var lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
-	function b64ToByteArray(b64) {
-		var i, j, l, tmp, placeHolders, arr;
-	
-		if (b64.length % 4 > 0) {
-			throw 'Invalid string. Length must be a multiple of 4';
-		}
-
-		// the number of equal signs (place holders)
-		// if there are two placeholders, than the two characters before it
-		// represent one byte
-		// if there is only one, then the three characters before it represent 2 bytes
-		// this is just a cheap hack to not do indexOf twice
-		placeHolders = b64.indexOf('=');
-		placeHolders = placeHolders > 0 ? b64.length - placeHolders : 0;
-
-		// base64 is 4/3 + up to two characters of the original data
-		arr = [];//new Uint8Array(b64.length * 3 / 4 - placeHolders);
-
-		// if there are placeholders, only get up to the last complete 4 chars
-		l = placeHolders > 0 ? b64.length - 4 : b64.length;
-
-		for (i = 0, j = 0; i < l; i += 4, j += 3) {
-			tmp = (lookup.indexOf(b64[i]) << 18) | (lookup.indexOf(b64[i + 1]) << 12) | (lookup.indexOf(b64[i + 2]) << 6) | lookup.indexOf(b64[i + 3]);
-			arr.push((tmp & 0xFF0000) >> 16);
-			arr.push((tmp & 0xFF00) >> 8);
-			arr.push(tmp & 0xFF);
-		}
-
-		if (placeHolders === 2) {
-			tmp = (lookup.indexOf(b64[i]) << 2) | (lookup.indexOf(b64[i + 1]) >> 4);
-			arr.push(tmp & 0xFF);
-		} else if (placeHolders === 1) {
-			tmp = (lookup.indexOf(b64[i]) << 10) | (lookup.indexOf(b64[i + 1]) << 4) | (lookup.indexOf(b64[i + 2]) >> 2);
-			arr.push((tmp >> 8) & 0xFF);
-			arr.push(tmp & 0xFF);
-		}
-
-		return arr;
-	}
-
-	function uint8ToBase64(uint8) {
-		var i,
-			extraBytes = uint8.length % 3, // if we have 1 byte left, pad 2 bytes
-			output = "",
-			temp, length;
-
-		function tripletToBase64 (num) {
-			return lookup[num >> 18 & 0x3F] + lookup[num >> 12 & 0x3F] + lookup[num >> 6 & 0x3F] + lookup[num & 0x3F];
-		};
-
-		// go through the array every three bytes, we'll deal with trailing stuff later
-		for (i = 0, length = uint8.length - extraBytes; i < length; i += 3) {
-			temp = (uint8[i] << 16) + (uint8[i + 1] << 8) + (uint8[i + 2]);
-			output += tripletToBase64(temp);
-		}
-
-		// pad the end with zeros, but make sure to not forget the extra bytes
-		switch (extraBytes) {
-			case 1:
-				temp = uint8[uint8.length - 1];
-				output += lookup[temp >> 2];
-				output += lookup[(temp << 4) & 0x3F];
-				output += '==';
-				break;
-			case 2:
-				temp = (uint8[uint8.length - 2] << 8) + (uint8[uint8.length - 1]);
-				output += lookup[temp >> 10];
-				output += lookup[(temp >> 4) & 0x3F];
-				output += lookup[(temp << 2) & 0x3F];
-				output += '=';
-				break;
-		}
-
-		return output;
-	}
-
-	module.exports.toByteArray = b64ToByteArray;
-	module.exports.fromByteArray = uint8ToBase64;
-}());
-
-},{}],38:[function(require,module,exports){
+},{"../transport":17,"../util":15,"engine.io-parser":8,"debug":18}],41:[function(require,module,exports){
 (function(Buffer){var stream = require('stream')
 var util = require('util')
 
@@ -10942,5 +11179,5 @@ module.exports = function(cb) {
 module.exports.ConcatStream = ConcatStream
 
 })(require("__browserify_buffer").Buffer)
-},{"stream":30,"util":31,"__browserify_buffer":20}]},{},[1])
+},{"stream":33,"util":34,"__browserify_buffer":23}]},{},[1])
 ;
