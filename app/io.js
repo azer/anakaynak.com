@@ -3,16 +3,17 @@ var socket   = require('./socket'),
     channels = {};
 
 module.exports = {
-  sub : sub,
-  pub : pub
+  sub   : sub,
+  pub   : pub,
+  unsub : unsub
 };
 
 socket.sub(function(rawMsg){
-
   var msg = parseRawMsg(rawMsg);
-  if( ! msg || ! msg.channel || ! channels[msg.channel] ) return;
-  channels[msg.channel].publish(msg.content, pub);
 
+  if( ! msg || ! msg.channel || ! channels[msg.channel] ) return;
+
+  channels[msg.channel].publish(msg.content, pub);
 });
 
 function parseRawMsg(msg){
@@ -28,4 +29,8 @@ function sub(channel, callback){
 
 function pub(channel, content){
   socket.pub(JSON.stringify({ channel: channel, content: content }));
+}
+
+function unsub(channel, fn){
+  channels[channel] && channels[channel].unsubscribe(fn);
 }

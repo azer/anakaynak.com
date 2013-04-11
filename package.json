@@ -1,14 +1,13 @@
 {
-  "name": "website",
+  "name": "anakaynak.com",
   "version": "0.0.0",
-  "description": "New website template",
-  "main": "app.js",
+  "description": "AnaKaynak.com",
+  "main": "server.js",
   "scripts": {
-    "start": "DEBUG=* node app",
+    "start": "DEBUG=anakaynak:* indev",
     "test": "fox"
   },
   "dependencies": {
-    "passport": "*",
     "fox": "*",
     "express": "3.x",
     "debug": "~0.7.2",
@@ -17,10 +16,15 @@
     "engine.io-client": "~0.5.0",
     "new-pubsub": "0.0.1",
     "attr": "0.0.0",
-    "mongoose": "~3.6.4"
+    "eksi-sozluk": "0.0.2",
+    "mongodb": "~1.2.14",
+    "page": "~1.3.6",
+    "dateformat": "~1.0.6-1.2.3",
+    "redis": "~0.8.3",
+    "hiredis": "~0.1.15"
   },
   "repository": {
-    "url": "git@github.com:azer/new-website.git",
+    "url": "git@github.com:azer/anakaynak.git",
     "type": "git"
   },
   "author": "azer",
