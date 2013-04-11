@@ -7,7 +7,7 @@ GPL. Ticari amacla kullanilamaz.
 ```bash
 $ git clone git@github.com:azer/anakaynak.com.git && cd anakaynak.com
 $ npm install
-$ indev
+$ npm start
 ```
 
 ## anakaynak.com
