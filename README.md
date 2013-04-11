@@ -1,3 +1,7 @@
+## Lisans
+
+GPL. Ticari amacla kullanilamaz.
+
 ## anakaynak.com
 
 ### Install
