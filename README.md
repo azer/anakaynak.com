@@ -2,6 +2,14 @@
 
 GPL. Ticari amacla kullanilamaz.
 
+## Kurulum 
+
+```bash
+$ git clone git@github.com:azer/anakaynak.com.git && cd anakaynak.com
+$ npm install
+$ indev
+```
+
 ## anakaynak.com
 
 ### Install
