@@ -3,12 +3,14 @@ var page    = require('page'),
     eksi    = require('./eksi'),
     current = require('./current'),
     defer   = require('./defer'),
-    input   = $('.search'),
-
-    defer;
+    input   = $('.search');
 
 module.exports = search;
 module.exports.route = route;
+
+current.rev.subscribe(function(rev){
+  search(current.title());
+});
 
 input.keypress(defer(0.25, function(e) {
 
@@ -39,9 +41,7 @@ function route(context){
 function search(title){
   current.title(title);
 
-  io.pub('user searches for', { title: title });
-
-  eksi(title, function(results){
+  eksi(title, current.rev(), function(results){
     if( results.title != current.title() ) return;
 
     if(results.suggestions){

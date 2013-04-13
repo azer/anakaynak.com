@@ -1,6 +1,8 @@
-var socket   = require('./socket'),
-    pubsub   = require('new-pubsub'),
-    channels = {};
+var socket    = require('./socket'),
+    pubsub    = require('new-pubsub'),
+    channels  = {},
+
+    reconnect = false;
 
 module.exports = {
   sub   : sub,

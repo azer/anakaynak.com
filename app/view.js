@@ -9,50 +9,20 @@ var dateFormat = require('dateformat'),
     bkzRe      = /\(bkz\:\s?([^\(\)]+)\s?\)/g;
 
 $('.search').focus();
+$('.toggle-sorting').click(current.rev.toggle);
 
 $(window).scroll(onScroll);
+onSortingUpdated(current.rev());
 
 current.image.subscribe(onImageChange);
 current.poem.subscribe(onPoemChange);
 
-current.suggestions.subscribe(function(update){
+current.rev.subscribe(onSortingUpdated);
 
-  if(update == undefined){
-    $('.suggestions').hide();
-    $('.content').show();
-    return;
-  }
-
-  $('.suggestions .title').html(update.title);
-  $('.suggestions ul').html(
-    update.suggestions.map(function(el){
-      return '<li><a href="/' + el + '">' + el + '</a></li>';
-    })
-    .join('\n')
-  );
-
-  $('.suggestions').show();
-  $('.content').hide();
-});
-
-current.title.subscribe(function(title){
-  loading();
-
-  window.scrollTo(0, 0);
-
-  document.title = title + ' | Ana Kaynak';
-
-  $('.title span').html(title);
-  $('.eksi').html('');
-
-});
-
-current.entries.subscribe(function(entries){
-  $('.eksi').append(entries.map(entryView).join('\n'));
-  $('.suggestions').hide();
-  notLoading();
-  fill();
-});
+current.suggestions.subscribe(onSuggestionsUpdate);
+current.title.subscribe(startNewSearch);
+current.entries.subscribe(onNewEntries);
+current.rev.subscribe(startNewSearch);
 
 function entryView(entry){
   return '<li class="entry">'
@@ -88,7 +58,7 @@ function loadImage(url, callback){
 
 
 function loading(){
-  $('.content').hide();
+  $('.content-inner').hide();
   $('.loading').show();
   isLoading = true;
 }
@@ -100,7 +70,7 @@ function more(){
 
   isLoading = true;
 
-  eksi.more(current.title(), current.len(), function(results){
+  eksi.more(current.title(), current.rev(), current.len() + 1, function(results){
     if(results.title != current.title()) return;
 
     isLoading = false;
@@ -111,7 +81,7 @@ function more(){
 }
 
 function notLoading(){
-  $('.content').show();
+  $('.content-inner').show();
   $('.loading').hide();
 
   isLoading = false;
@@ -134,6 +104,13 @@ function onImageChange(image){
   });
 }
 
+function onNewEntries(entries){
+  $('.eksi').append(entries.map(entryView).join('\n'));
+  $('.suggestions').hide();
+  notLoading();
+  fill();
+}
+
 function onPoemChange(poem){
   $('.poem').attr('href', poem.url).html(poem.text);
 }
@@ -150,9 +127,44 @@ function onScroll(){
   }
 }
 
+function onSortingUpdated(rev){
+  $('.toggle-sorting').html( rev ? 'Eskiden Yeniye' : 'Yeniden Eskiye' );
+}
+
+function onSuggestionsUpdate(update){
+
+  if(update == undefined){
+    $('.suggestions').hide();
+    $('.content').show();
+    return;
+  }
+
+  $('.suggestions .title').html(update.title);
+  $('.suggestions ul').html(
+    update.suggestions.map(function(el){
+      return '<li><a href="/' + el + '">' + el + '</a></li>';
+    })
+    .join('\n')
+  );
+
+  $('.suggestions').show();
+  $('.content').hide();
+}
+
 function prettifyEntryContent(content){
   return content
     .replace(/\n/g, '<br>')
     .replace(/\[([^\]]+)\]\(([^\)]+)\)/g, '<a href="$2">$1</a>')
     .replace(urlRe, "$1<a href='$2'>$2</a>");
+}
+
+function startNewSearch(){
+  loading();
+
+  window.scrollTo(0, 0);
+
+  document.title = current.title() + ' | Ana Kaynak';
+
+  $('.title span').html(current.title());
+  $('.eksi').html('');
 }

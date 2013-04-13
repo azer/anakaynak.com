@@ -1,4 +1,5 @@
-var attr = require("attr");
+var attr              = require("attr"),
+    sortingStorageKey = 'eksi:sort-reverse';
 
 exports = module.exports = {
   title       : attr(),
@@ -6,7 +7,16 @@ exports = module.exports = {
   image       : attr(),
   poem        : attr(),
   suggestions : attr(),
+  rev         : attr( !! localStorage[sortingStorageKey] ),
   len         : len
+};
+
+exports.rev.toggle = function(){
+  if( exports.rev( !exports.rev() ) ) {
+    localStorage[sortingStorageKey] = true;
+  } else {
+    delete localStorage[sortingStorageKey];
+  }
 };
 
 function len(){

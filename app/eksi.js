@@ -1,10 +1,18 @@
-var io = require("./io");
+var io      = require("./io"),
+    revtimer;
 
-exports = module.exports = entries;
-exports.more = more;
-exports.suggestions = suggestions;
+exports                     = module.exports = entries;
+exports.checkForMoreEntries = checkForNewEntries;
+exports.more                = more;
+exports.suggestions         = suggestions;
 
-function entries(title, callback){
+function checkForNewEntries(){
+  revtimer = setTimeout(checkForNewEntries, 5000);
+}
+
+function entries(title, rev, callback){
+  io.pub('user searches for', { title: title, rev: rev });
+
   io.sub('eksi sozluk results for ' + title, function(results){
     callback(results);
   });
@@ -14,7 +22,7 @@ function entries(title, callback){
   });
 }
 
-function more(title, from, callback){
+function more(title, rev, from, callback){
   var channel = 'more eksi sozluk results for ' + title;
 
   io.sub(channel, function cb(results){
@@ -22,7 +30,12 @@ function more(title, from, callback){
     callback(results);
   });
 
-  io.pub('load more eksi sozluk entries', { title: title, from: from, to: from + 10 });
+  io.pub('load more eksi sozluk entries', {
+    title: title,
+    from: from,
+    to: from + 10,
+    rev: rev
+  });
 }
 
 function suggestions(keyword, callback){
