@@ -35,6 +35,8 @@ input.keypress(defer(1, function(){
 
 function route(context){
   input.val('');
+  $('.content').show();
+  $('.suggestions').hide();
   search(context.params.title);
 }
 
